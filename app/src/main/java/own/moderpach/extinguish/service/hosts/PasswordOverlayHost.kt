@@ -104,7 +104,7 @@ class PasswordOverlayHost(
         softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
     }
 
-    private inner class CustomOverlayView(context: Context) : ComposeView(context) {
+    private inner class CustomOverlayContainer(context: Context) : android.widget.FrameLayout(context) {
 
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
             if (event.keyCode == KeyEvent.KEYCODE_BACK) {
@@ -150,14 +150,25 @@ class PasswordOverlayHost(
         }
     }
 
-    private val customView = CustomOverlayView(context).apply {
+    private val customView = CustomOverlayContainer(context).apply {
         setViewTreeLifecycleOwner(this@PasswordOverlayHost)
         setViewTreeSavedStateRegistryOwner(this@PasswordOverlayHost)
-        setContent {
-            ExtinguishThemeForNonActivityContext(darkTheme = true) {
-                PasswordOverlayContent()
+        val composeView = ComposeView(context).apply {
+            setViewTreeLifecycleOwner(this@PasswordOverlayHost)
+            setViewTreeSavedStateRegistryOwner(this@PasswordOverlayHost)
+            setContent {
+                ExtinguishThemeForNonActivityContext(darkTheme = true) {
+                    PasswordOverlayContent()
+                }
             }
         }
+        addView(
+            composeView,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
     }
 
     init {
