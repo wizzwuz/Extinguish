@@ -110,4 +110,18 @@
     <string name="str_SystemUnsupportedBrightnessSettings_description">如果您的设备实际支持亮度和自动亮度设置，尝试切换它们可能可以解决问题。</string>
     <string name="str_browser_not_found">浏览器未安装或启用</string>
     <string name="str_shizuku_not_found">Shizuku 未安装或启用</string>
+    <string name="str_overlay_password">覆盖密码</string>
+    <string name="str_overlay_password_supporting">在 Shizuku 熄屏模式下点亮屏幕时要求输入覆盖密码</string>
+    <string name="str_change_overlay_password">修改密码</string>
+    <string name="str_change_overlay_password_supporting">设置或更新覆盖密码 PIN</string>
+    <string name="str_change_password_dialog_title">修改覆盖密码</string>
+    <string name="str_enter_new_pin">新密码</string>
+    <string name="str_confirm_pin">确认密码</string>
+    <string name="str_pin_mismatch">两次输入的密码不一致</string>
+    <string name="str_pin_empty">密码不能为空</string>
+    <string name="str_cancel">取消</string>
+    <string name="str_device_locked">设备已锁定</string>
+    <string name="str_enter_pin_to_unlock">输入密码以解锁</string>
+    <string name="str_wrong_pin_attempts">密码错误（还剩 %1$d 次机会）</string>
+    <string name="str_pin_locked_out">错误尝试已达 5 次，正在锁定设备...</string>
 </resources>

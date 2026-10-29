@@ -28,6 +28,8 @@ class FakeSettingsRepository : ISettingsRepository {
         override var clickToTurnScreenOff by mutableStateOf(false)
         override var clickToTurnScreenOn by mutableStateOf(false)
         override var listeningMethod by mutableStateOf(SettingsTokens.VolumeKeyEvent.ListeningMethodValue.Shell)
+        override var overlayPasswordEnabled by mutableStateOf(false)
+        override var overlayPassword by mutableStateOf("1234")
     }
 
     override val screenEvent = object : ISettingsRepository.ScreenEvent {

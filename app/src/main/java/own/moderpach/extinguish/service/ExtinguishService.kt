@@ -41,6 +41,7 @@ import own.moderpach.extinguish.notifyException
 import own.moderpach.extinguish.service.hosts.AwakeHost
 import own.moderpach.extinguish.service.hosts.FloatingButtonHost
 import own.moderpach.extinguish.service.hosts.NotificationHost
+import own.moderpach.extinguish.service.hosts.PasswordOverlayHost
 import own.moderpach.extinguish.service.hosts.ScreenEventHost
 import own.moderpach.extinguish.service.hosts.VolumeKeyEventShizukuHost
 import own.moderpach.extinguish.service.hosts.VolumeKeyEventWindowHost
@@ -101,6 +102,7 @@ class ExtinguishService : LifecycleService() {
     var volumeKeyEventWindowHost: VolumeKeyEventWindowHost? = null
     var volumeKeyEventShizukuHost: VolumeKeyEventShizukuHost? = null
     var screenEventHost: ScreenEventHost? = null
+    var passwordOverlayHost: PasswordOverlayHost? = null
     val notificationHost by lazy { NotificationHost(this) }
 
     private val updateHostStateMutex = Mutex()
@@ -320,6 +322,26 @@ class ExtinguishService : LifecycleService() {
 
             awakeHost = AwakeHost(this@ExtinguishService)
 
+            if (feature.enabledOverlayPassword) {
+                passwordOverlayHost = PasswordOverlayHost(
+                    context = this@ExtinguishService,
+                    onUnlockSuccess = {
+                        Log.d(TAG, "Password overlay unlocked successfully")
+                        passwordOverlayHost?.hide()
+                    },
+                    onGoToLockScreen = {
+                        Log.d(TAG, "Taking device to lock screen")
+                        passwordOverlayHost?.hide()
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            displayControlService?.lockDevice()
+                        }
+                    },
+                    onCollapsePanels = {
+                        displayControlService?.collapsePanels()
+                    }
+                )
+            }
+
             if (feature.enabledFloatingButtonControl) {
                 floatingButtonHost = FloatingButtonHost(
                     this@ExtinguishService,
@@ -508,6 +530,7 @@ class ExtinguishService : LifecycleService() {
             volumeKeyEventWindowHost?.destroy()
             volumeKeyEventShizukuHost?.unregister()
             screenEventHost?.unregister()
+            passwordOverlayHost?.destroy()
 
             eventsProviderService?.let {
                 it.stop()
@@ -537,6 +560,8 @@ class ExtinguishService : LifecycleService() {
         SettingsTokens.VolumeKeyEvent.ListeningMethodValue.valueOf(
             SettingsTokens.VolumeKeyEvent.ListeningMethod.default
         ),
+        SettingsTokens.VolumeKeyEvent.OverlayPasswordEnabled.default,
+        SettingsTokens.VolumeKeyEvent.OverlayPassword.default,
         SettingsTokens.ScreenEvent.Enabled.default,
         SettingsTokens.Compatibility.BrightnessManualWhenScreenOff.default
     )
@@ -549,6 +574,8 @@ class ExtinguishService : LifecycleService() {
         val clickVolumeKeyToTurnScreenOff: Boolean,
         val clickVolumeKeyToTurnScreenOn: Boolean,
         val volumeKeyEventControlMethod: SettingsTokens.VolumeKeyEvent.ListeningMethodValue,
+        val enabledOverlayPassword: Boolean,
+        val overlayPassword: String,
         val enabledScreenEventControl: Boolean,
         val brightnessManualWhenScreenOff: Boolean
     )
@@ -562,6 +589,8 @@ class ExtinguishService : LifecycleService() {
             repository.volumeKeyEvent.clickToTurnScreenOff,
             repository.volumeKeyEvent.clickToTurnScreenOn,
             repository.volumeKeyEvent.listeningMethod,
+            repository.volumeKeyEvent.overlayPasswordEnabled && repository.solution == SettingsTokens.SolutionValue.ShizukuPowerOffScreen,
+            repository.volumeKeyEvent.overlayPassword,
             repository.screenEvent.enabled && repository.solution == SettingsTokens.SolutionValue.ShizukuScreenBrightnessNeg1,
             repository.compatibility.brightnessManualWhenScreenOff
         )
@@ -695,6 +724,9 @@ class ExtinguishService : LifecycleService() {
     suspend fun turnScreenOn() {
         screenControlMutex.withLock {
             screenState.update { ScreenState.On }
+            if (feature.enabledOverlayPassword && feature.solution == ShizukuPowerOffScreen) {
+                passwordOverlayHost?.show(feature.overlayPassword)
+            }
             try {
                 when (feature.solution) {
                     ShizukuPowerOffScreen -> {
@@ -747,6 +779,7 @@ class ExtinguishService : LifecycleService() {
     suspend fun turnScreenOff() {
         screenControlMutex.withLock {
             screenState.update { ScreenState.Off }
+            passwordOverlayHost?.hide()
             recordBrightness = try {
                 Settings.System.getInt(
                     contentResolver,
@@ -813,6 +846,7 @@ class ExtinguishService : LifecycleService() {
         systemLockReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 lifecycleScope.launch(Dispatchers.Main) {
+                    passwordOverlayHost?.hide()
                     screenControlMutex.withLock {
                         displayControlService?.setBrightnessToSetting(recordBrightness)
                     }

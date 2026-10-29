@@ -114,5 +114,19 @@
     <string name="str_SystemUnsupportedBrightnessSettings_description">If your device actually support setting brightness or brightness mode, you can try to switch these settings may solve the problem.</string>
     <string name="str_browser_not_found">Browser is not installed or enabled</string>
     <string name="str_shizuku_not_found">Shizuku is not installed or enabled</string>
+    <string name="str_overlay_password">Overlay password</string>
+    <string name="str_overlay_password_supporting">Require password overlay when screen is turned on with Shizuku power off</string>
+    <string name="str_change_overlay_password">Change password</string>
+    <string name="str_change_overlay_password_supporting">Set or update the overlay PIN</string>
+    <string name="str_change_password_dialog_title">Change Overlay Password</string>
+    <string name="str_enter_new_pin">New PIN</string>
+    <string name="str_confirm_pin">Confirm PIN</string>
+    <string name="str_pin_mismatch">PINs do not match</string>
+    <string name="str_pin_empty">PIN cannot be empty</string>
+    <string name="str_cancel">Cancel</string>
+    <string name="str_device_locked">Device Locked</string>
+    <string name="str_enter_pin_to_unlock">Enter PIN to unlock</string>
+    <string name="str_wrong_pin_attempts">Incorrect PIN (%1$d attempts left)</string>
+    <string name="str_pin_locked_out">5 wrong attempts. Locking device...</string>
 
 </resources>

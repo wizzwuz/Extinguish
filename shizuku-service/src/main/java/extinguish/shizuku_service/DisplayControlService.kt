@@ -88,6 +88,32 @@ class DisplayControlService : IDisplayControl.Stub() {
         return UnitResult.Ok()
     }
 
+    override fun lockDevice(): UnitResult {
+        return try {
+            val output = shProcess.outputStream
+            synchronized(shLock) {
+                output.write("input keyevent 26 && sleep 0.15 && input keyevent 224\n".toByteArray())
+                output.flush()
+            }
+            UnitResult.Ok()
+        } catch (e: Exception) {
+            UnitResult.Err(e)
+        }
+    }
+
+    override fun collapsePanels(): UnitResult {
+        return try {
+            val output = shProcess.outputStream
+            synchronized(shLock) {
+                output.write("cmd statusbar collapse || service call statusbar 2\n".toByteArray())
+                output.flush()
+            }
+            UnitResult.Ok()
+        } catch (e: Exception) {
+            UnitResult.Err(e)
+        }
+    }
+
     override fun destroy() {
         Log.d(TAG, "destroy: $TAG")
         synchronized(shLock) {

@@ -3,7 +3,10 @@
 name: Build release apk and app bundle
 
 # Controls when the workflow will run
-on: workflow_dispatch
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -17,11 +20,25 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
 
-      - name: Retrieve the secret and decode it to a file
+      - name: Setup Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASS_SECRET: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS_SECRET: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS_SECRET: ${{ secrets.KEY_PASS }}
         run: |
-          echo $KEYSTORE_BASE64 | base64 --decode > extinguish.jks
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > extinguish.jks
+            echo "KEYSTORE_PASS=$KEYSTORE_PASS_SECRET" >> $GITHUB_ENV
+            echo "KEY_ALIAS=$KEY_ALIAS_SECRET" >> $GITHUB_ENV
+            echo "KEY_PASS=$KEY_PASS_SECRET" >> $GITHUB_ENV
+          else
+            echo "Generating fallback keystore for signing..."
+            keytool -genkey -v -keystore extinguish.jks -alias extinguish -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Extinguish, OU=Extinguish, O=Extinguish, L=Unknown, S=Unknown, C=US"
+            echo "KEYSTORE_PASS=123456" >> $GITHUB_ENV
+            echo "KEY_ALIAS=extinguish" >> $GITHUB_ENV
+            echo "KEY_PASS=123456" >> $GITHUB_ENV
+          fi
           echo "KEY_STORE_FILE=${{ github.workspace }}/extinguish.jks" >> $GITHUB_ENV
 
       - name: Setup Java
@@ -55,9 +72,9 @@ jobs:
 
       - name: Signing apk
         env:
-          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.KEY_PASS }}
+          KEYSTORE_PASS: ${{ env.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          KEY_PASS: ${{ env.KEY_PASS }}
           UNSIGNED_APP_NAME: app-unsigned-release-unsigned.apk
           ALIGN_APP_NAME: app-release-aligned.apk
           SIGNED_APP_NAME: app-release.apk
@@ -68,9 +85,9 @@ jobs:
 
       - name: Signing app bundle
         env:
-          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.KEY_PASS }}
+          KEYSTORE_PASS: ${{ env.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          KEY_PASS: ${{ env.KEY_PASS }}
           UNSIGNED_APP_NAME: app-unsigned-release.aab
           SIGNED_APP_NAME: app-release.aab
         working-directory: app/build/outputs/bundle/unsignedRelease

@@ -39,6 +39,11 @@ object SettingsTokens {
 
         val ListeningMethod =
             stringSettingElement("VolumeKeyEvent/ListeningMethod", ListeningMethodValue.Shell.name)
+
+        val OverlayPasswordEnabled =
+            booleanSettingElement("VolumeKeyEvent/OverlayPasswordEnabled", false)
+        val OverlayPassword =
+            stringSettingElement("VolumeKeyEvent/OverlayPassword", "1234")
     }
 
     object ScreenEvent {

@@ -24,6 +24,8 @@ interface ISettingsRepository {
         var clickToTurnScreenOff: Boolean
         var clickToTurnScreenOn: Boolean
         var listeningMethod: SettingsTokens.VolumeKeyEvent.ListeningMethodValue
+        var overlayPasswordEnabled: Boolean
+        var overlayPassword: String
     }
 
     val volumeKeyEvent: VolumeKeyEvent

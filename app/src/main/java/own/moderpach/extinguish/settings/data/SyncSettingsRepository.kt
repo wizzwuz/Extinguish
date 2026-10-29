@@ -41,6 +41,8 @@ class SyncSettingsRepository(
             set(value) {
                 _listeningMethod = value.name
             }
+        override var overlayPasswordEnabled by Delegate(SettingsTokens.VolumeKeyEvent.OverlayPasswordEnabled)
+        override var overlayPassword by Delegate(SettingsTokens.VolumeKeyEvent.OverlayPassword)
     }
 
     override val screenEvent = object : ISettingsRepository.ScreenEvent {

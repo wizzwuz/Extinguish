@@ -10,16 +10,27 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraphBuilder
@@ -63,6 +74,90 @@ fun VolumeKeyControlScreen(
     onNavigateTo: (ExtinguishNavRoute) -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showPasswordDialog = false
+                newPin = ""
+                confirmPin = ""
+                errorMessage = null
+            },
+            title = {
+                Text(stringResource(R.string.str_change_password_dialog_title))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newPin,
+                        onValueChange = {
+                            if (it.all { char -> char.isDigit() }) newPin = it
+                            errorMessage = null
+                        },
+                        label = { Text(stringResource(R.string.str_enter_new_pin)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                    )
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = {
+                            if (it.all { char -> char.isDigit() }) confirmPin = it
+                            errorMessage = null
+                        },
+                        label = { Text(stringResource(R.string.str_confirm_pin)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                    )
+                    errorMessage?.let {
+                        Text(
+                            text = it,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                val emptyPinStr = stringResource(R.string.str_pin_empty)
+                val mismatchPinStr = stringResource(R.string.str_pin_mismatch)
+                TextButton(
+                    onClick = {
+                        if (newPin.isEmpty()) {
+                            errorMessage = emptyPinStr
+                        } else if (newPin != confirmPin) {
+                            errorMessage = mismatchPinStr
+                        } else {
+                            settingsRepository.volumeKeyEvent.overlayPassword = newPin
+                            showPasswordDialog = false
+                            newPin = ""
+                            confirmPin = ""
+                            errorMessage = null
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.Save))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showPasswordDialog = false
+                        newPin = ""
+                        confirmPin = ""
+                        errorMessage = null
+                    }
+                ) {
+                    Text(stringResource(R.string.str_cancel))
+                }
+            }
+        )
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -103,6 +198,29 @@ fun VolumeKeyControlScreen(
                             settingsRepository.volumeKeyEvent.clickToTurnScreenOff = it
                         }
                     )
+                }
+            }
+            if (settingsRepository.solution == SettingsTokens.SolutionValue.ShizukuPowerOffScreen) {
+                item {
+                    SettingCard {
+                        SettingListItemWithSwitch(
+                            headline = stringResource(R.string.str_overlay_password),
+                            supporting = stringResource(R.string.str_overlay_password_supporting),
+                            checked = settingsRepository.volumeKeyEvent.overlayPasswordEnabled,
+                            onCheckedChange = {
+                                settingsRepository.volumeKeyEvent.overlayPasswordEnabled = it
+                            }
+                        )
+                        if (settingsRepository.volumeKeyEvent.overlayPasswordEnabled) {
+                            SettingListItem(
+                                headline = stringResource(R.string.str_change_overlay_password),
+                                supporting = stringResource(R.string.str_change_overlay_password_supporting),
+                                onClick = {
+                                    showPasswordDialog = true
+                                }
+                            )
+                        }
+                    }
                 }
             }
             item {
