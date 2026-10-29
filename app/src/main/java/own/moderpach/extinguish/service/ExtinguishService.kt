@@ -724,7 +724,33 @@ class ExtinguishService : LifecycleService() {
     suspend fun turnScreenOn() {
         screenControlMutex.withLock {
             screenState.update { ScreenState.On }
+            try {
+                val settingRepository = SyncSettingsRepository(settingsDataStore)
+                settingRepository.update()
+                loadFeatureFromSettings(settingRepository, false)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error reloading settings in turnScreenOn", e)
+            }
             if (feature.enabledOverlayPassword && feature.solution == ShizukuPowerOffScreen) {
+                if (passwordOverlayHost == null) {
+                    passwordOverlayHost = PasswordOverlayHost(
+                        context = this@ExtinguishService,
+                        onUnlockSuccess = {
+                            Log.d(TAG, "Password overlay unlocked successfully")
+                            passwordOverlayHost?.hide()
+                        },
+                        onGoToLockScreen = {
+                            Log.d(TAG, "Taking device to lock screen")
+                            passwordOverlayHost?.hide()
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                displayControlService?.lockDevice()
+                            }
+                        },
+                        onCollapsePanels = {
+                            displayControlService?.collapsePanels()
+                        }
+                    )
+                }
                 passwordOverlayHost?.show(feature.overlayPassword)
             }
             try {

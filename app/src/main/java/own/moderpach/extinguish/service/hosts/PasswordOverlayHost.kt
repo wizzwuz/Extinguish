@@ -29,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,7 +90,22 @@ class PasswordOverlayHost(
 
     private var targetPassword by mutableStateOf("")
     private var wrongAttempts by mutableIntStateOf(0)
-    private var isLockedOut by mutableStateOf(false)
+    private var isTriggeringLock = false
+    private var hasGainedFocus = false
+
+    private fun getRealScreenWidth(): Int {
+        val displayMetrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(displayMetrics)
+        return displayMetrics.widthPixels
+    }
+
+    private fun getRealScreenHeight(): Int {
+        val displayMetrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(displayMetrics)
+        return displayMetrics.heightPixels
+    }
 
     private val layoutParams = WindowManager.LayoutParams().apply {
         type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -106,35 +120,94 @@ class PasswordOverlayHost(
 
     private inner class CustomOverlayContainer(context: Context) : android.widget.FrameLayout(context) {
 
+        private var touchDownX = 0f
+        private var touchDownY = 0f
+        private var isEdgeGesture = false
+
+        init {
+            isFocusable = true
+            isFocusableInTouchMode = true
+        }
+
         override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+            Log.d(TAG, "dispatchKeyEvent: keyCode=${event.keyCode}, action=${event.action}")
             if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-                if (event.action == KeyEvent.ACTION_UP) {
-                    Log.d(TAG, "Back pressed while password overlay showing -> taking to lock screen")
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    Log.d(TAG, "Back button pressed -> taking to lock screen")
                     handleLockScreenTrigger()
                 }
                 return true
             }
             if (event.keyCode == KeyEvent.KEYCODE_HOME || event.keyCode == KeyEvent.KEYCODE_APP_SWITCH) {
-                Log.d(TAG, "Home or AppSwitch pressed while password overlay showing -> taking to lock screen")
-                handleLockScreenTrigger()
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    Log.d(TAG, "Home or AppSwitch button pressed -> taking to lock screen")
+                    handleLockScreenTrigger()
+                }
                 return true
             }
             return super.dispatchKeyEvent(event)
         }
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-            // Block status bar pull down
-            if (ev.rawY < 150f) {
-                onCollapsePanels()
-                return true
-            }
-            // Detect bottom navigation gesture attempt (swipe up near bottom edge)
-            val displayHeight = resources.displayMetrics.heightPixels
-            if (ev.rawY > (displayHeight - 140)) {
-                if (ev.action == MotionEvent.ACTION_DOWN || ev.action == MotionEvent.ACTION_MOVE) {
-                    Log.d(TAG, "Bottom navigation gesture detected -> taking to lock screen")
-                    handleLockScreenTrigger()
-                    return true
+            val realWidth = getRealScreenWidth()
+            val realHeight = getRealScreenHeight()
+
+            when (ev.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchDownX = ev.rawX
+                    touchDownY = ev.rawY
+
+                    // Top notification bar / quick settings shade (top 150px)
+                    if (ev.rawY < 150f) {
+                        onCollapsePanels()
+                        return true
+                    }
+
+                    // Bottom navigation bar / gesture touch (bottom 160px)
+                    if (ev.rawY > (realHeight - 160f)) {
+                        Log.d(TAG, "Bottom nav touch detected -> taking to lock screen")
+                        handleLockScreenTrigger()
+                        return true
+                    }
+
+                    // Left edge (< 80px) or right edge (> width - 80px) back gesture
+                    isEdgeGesture = (ev.rawX < 80f || ev.rawX > (realWidth - 80f))
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    // Block notification shade pulling
+                    if (ev.rawY < 150f) {
+                        onCollapsePanels()
+                        return true
+                    }
+
+                    // Bottom gesture swipe up (Home / Recent)
+                    if (ev.rawY > (realHeight - 160f)) {
+                        Log.d(TAG, "Bottom nav swipe detected -> taking to lock screen")
+                        handleLockScreenTrigger()
+                        return true
+                    }
+
+                    // Back gesture swipe inward from left/right edge
+                    if (isEdgeGesture) {
+                        val deltaX = Math.abs(ev.rawX - touchDownX)
+                        if (deltaX > 25f) {
+                            Log.d(TAG, "Back gesture swipe detected -> taking to lock screen")
+                            handleLockScreenTrigger()
+                            return true
+                        }
+                    }
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (isEdgeGesture) {
+                        val deltaX = Math.abs(ev.rawX - touchDownX)
+                        if (deltaX > 20f) {
+                            Log.d(TAG, "Back gesture completed -> taking to lock screen")
+                            handleLockScreenTrigger()
+                            return true
+                        }
+                    }
                 }
             }
             return super.dispatchTouchEvent(ev)
@@ -142,8 +215,11 @@ class PasswordOverlayHost(
 
         override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
             super.onWindowFocusChanged(hasWindowFocus)
-            if (!hasWindowFocus && isShowing && !isLockedOut) {
-                Log.d(TAG, "Window focus lost while password overlay showing -> taking to lock screen")
+            Log.d(TAG, "onWindowFocusChanged: hasWindowFocus=$hasWindowFocus, hasGainedFocus=$hasGainedFocus, isShowing=$isShowing")
+            if (hasWindowFocus) {
+                hasGainedFocus = true
+            } else if (hasGainedFocus && isShowing && !isTriggeringLock) {
+                Log.d(TAG, "Window lost focus while overlay showing -> taking to lock screen")
                 onCollapsePanels()
                 handleLockScreenTrigger()
             }
@@ -179,12 +255,18 @@ class PasswordOverlayHost(
         if (isShowing) return
         targetPassword = password
         wrongAttempts = 0
-        isLockedOut = false
+        isTriggeringLock = false
+        hasGainedFocus = false
         isShowing = true
 
         try {
             if (!customView.isAttachedToWindow) {
                 windowManager.addView(customView, layoutParams)
+            }
+            customView.post {
+                customView.isFocusable = true
+                customView.isFocusableInTouchMode = true
+                customView.requestFocus()
             }
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -233,8 +315,9 @@ class PasswordOverlayHost(
     }
 
     private fun handleLockScreenTrigger() {
-        if (!isShowing || isLockedOut) return
-        isLockedOut = true
+        if (!isShowing || isTriggeringLock) return
+        isTriggeringLock = true
+        isShowing = false
         hide()
         onGoToLockScreen()
     }
@@ -243,14 +326,6 @@ class PasswordOverlayHost(
     private fun PasswordOverlayContent() {
         var enteredPin by remember { mutableStateOf("") }
         val maxAttempts = 5
-
-        LaunchedEffect(wrongAttempts) {
-            if (wrongAttempts >= maxAttempts) {
-                isLockedOut = true
-                delay(200)
-                handleLockScreenTrigger()
-            }
-        }
 
         Box(
             modifier = Modifier
@@ -287,9 +362,10 @@ class PasswordOverlayHost(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                val attemptsLeft = (maxAttempts - wrongAttempts).coerceAtLeast(0)
                 Text(
                     text = if (wrongAttempts > 0) {
-                        stringResource(R.string.str_wrong_pin_attempts, maxAttempts - wrongAttempts)
+                        stringResource(R.string.str_wrong_pin_attempts, attemptsLeft)
                     } else {
                         stringResource(R.string.str_enter_pin_to_unlock)
                     },
@@ -356,8 +432,13 @@ class PasswordOverlayHost(
                                                 if (nextPin == targetPassword) {
                                                     onUnlockSuccess()
                                                 } else if (nextPin.length >= targetPassword.length) {
-                                                    wrongAttempts++
+                                                    val newWrongAttempts = wrongAttempts + 1
+                                                    wrongAttempts = newWrongAttempts
                                                     enteredPin = ""
+                                                    if (newWrongAttempts >= maxAttempts) {
+                                                        Log.d(TAG, "5 wrong attempts reached -> taking to lock screen")
+                                                        handleLockScreenTrigger()
+                                                    }
                                                 }
                                             }
                                         }

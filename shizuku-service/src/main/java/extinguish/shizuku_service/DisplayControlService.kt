@@ -92,7 +92,7 @@ class DisplayControlService : IDisplayControl.Stub() {
         return try {
             val output = shProcess.outputStream
             synchronized(shLock) {
-                output.write("input keyevent 26 && sleep 0.15 && input keyevent 224\n".toByteArray())
+                output.write("settings put secure lock_screen_lock_after_timeout 0\nsettings put secure lockscreen.power_button_instantly_locks 1\ninput keyevent 26\n".toByteArray())
                 output.flush()
             }
             UnitResult.Ok()
