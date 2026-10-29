@@ -24,7 +24,7 @@ class DisplayControlService : IDisplayControl.Stub() {
     private var _shProcess: Process? = null
     val shProcess: Process
         get() = synchronized(shLock) {
-            if (_shProcess?.isAlive == true) _shProcess
+            if (_shProcess?.isAlive == true) return _shProcess!!
             Runtime.getRuntime().exec(arrayOf("sh")).also {
                 _shProcess = it
             }
@@ -90,11 +90,9 @@ class DisplayControlService : IDisplayControl.Stub() {
 
     override fun lockDevice(): UnitResult {
         return try {
-            val output = shProcess.outputStream
-            synchronized(shLock) {
-                output.write("settings put secure lock_screen_lock_after_timeout 0\nsettings put secure lockscreen.power_button_instantly_locks 1\ninput keyevent 26\n".toByteArray())
-                output.flush()
-            }
+            Runtime.getRuntime().exec(arrayOf("settings", "put", "global", "policy_control", "null*"))
+            val proc = Runtime.getRuntime().exec(arrayOf("input", "keyevent", "26"))
+            proc.waitFor()
             UnitResult.Ok()
         } catch (e: Exception) {
             UnitResult.Err(e)
@@ -103,11 +101,26 @@ class DisplayControlService : IDisplayControl.Stub() {
 
     override fun collapsePanels(): UnitResult {
         return try {
-            val output = shProcess.outputStream
-            synchronized(shLock) {
-                output.write("cmd statusbar collapse || service call statusbar 2\n".toByteArray())
-                output.flush()
-            }
+            Runtime.getRuntime().exec(arrayOf("cmd", "statusbar", "collapse"))
+            UnitResult.Ok()
+        } catch (e: Exception) {
+            UnitResult.Err(e)
+        }
+    }
+
+    override fun disableStatusBar(): UnitResult {
+        return try {
+            Runtime.getRuntime().exec(arrayOf("settings", "put", "global", "policy_control", "immersive.full=*"))
+            Runtime.getRuntime().exec(arrayOf("cmd", "statusbar", "collapse"))
+            UnitResult.Ok()
+        } catch (e: Exception) {
+            UnitResult.Err(e)
+        }
+    }
+
+    override fun enableStatusBar(): UnitResult {
+        return try {
+            Runtime.getRuntime().exec(arrayOf("settings", "put", "global", "policy_control", "null*"))
             UnitResult.Ok()
         } catch (e: Exception) {
             UnitResult.Err(e)

@@ -13,6 +13,8 @@ interface IDisplayControl {
     UnitResult setBrightnessModeToSetting(int mode) = 6;
     UnitResult lockDevice() = 7;
     UnitResult collapsePanels() = 8;
+    UnitResult disableStatusBar() = 9;
+    UnitResult enableStatusBar() = 10;
 
     void destroy() = 16777114;
 }

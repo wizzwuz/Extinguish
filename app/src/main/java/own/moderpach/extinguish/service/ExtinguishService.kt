@@ -103,6 +103,34 @@ class ExtinguishService : LifecycleService() {
     var volumeKeyEventShizukuHost: VolumeKeyEventShizukuHost? = null
     var screenEventHost: ScreenEventHost? = null
     var passwordOverlayHost: PasswordOverlayHost? = null
+    private fun createPasswordOverlayHost(): PasswordOverlayHost {
+        return PasswordOverlayHost(
+            context = this@ExtinguishService,
+            onUnlockSuccess = {
+                Log.d(TAG, "Password overlay unlocked successfully")
+                passwordOverlayHost?.hide()
+                lifecycleScope.launch(Dispatchers.Main) {
+                    displayControlService?.enableStatusBar()
+                }
+            },
+            onGoToLockScreen = {
+                Log.d(TAG, "Taking device to lock screen")
+                passwordOverlayHost?.hide()
+                lifecycleScope.launch(Dispatchers.Main) {
+                    displayControlService?.lockDevice()
+                }
+            },
+            onCollapsePanels = {
+                displayControlService?.collapsePanels()
+            },
+            onShowOverlay = {
+                displayControlService?.disableStatusBar()
+            },
+            onHideOverlay = {
+                displayControlService?.enableStatusBar()
+            }
+        )
+    }
     val notificationHost by lazy { NotificationHost(this) }
 
     private val updateHostStateMutex = Mutex()
@@ -323,23 +351,7 @@ class ExtinguishService : LifecycleService() {
             awakeHost = AwakeHost(this@ExtinguishService)
 
             if (feature.enabledOverlayPassword) {
-                passwordOverlayHost = PasswordOverlayHost(
-                    context = this@ExtinguishService,
-                    onUnlockSuccess = {
-                        Log.d(TAG, "Password overlay unlocked successfully")
-                        passwordOverlayHost?.hide()
-                    },
-                    onGoToLockScreen = {
-                        Log.d(TAG, "Taking device to lock screen")
-                        passwordOverlayHost?.hide()
-                        lifecycleScope.launch(Dispatchers.Main) {
-                            displayControlService?.lockDevice()
-                        }
-                    },
-                    onCollapsePanels = {
-                        displayControlService?.collapsePanels()
-                    }
-                )
+                passwordOverlayHost = createPasswordOverlayHost()
             }
 
             if (feature.enabledFloatingButtonControl) {
@@ -531,6 +543,7 @@ class ExtinguishService : LifecycleService() {
             volumeKeyEventShizukuHost?.unregister()
             screenEventHost?.unregister()
             passwordOverlayHost?.destroy()
+            displayControlService?.enableStatusBar()
 
             eventsProviderService?.let {
                 it.stop()
@@ -733,23 +746,7 @@ class ExtinguishService : LifecycleService() {
             }
             if (feature.enabledOverlayPassword && feature.solution == ShizukuPowerOffScreen) {
                 if (passwordOverlayHost == null) {
-                    passwordOverlayHost = PasswordOverlayHost(
-                        context = this@ExtinguishService,
-                        onUnlockSuccess = {
-                            Log.d(TAG, "Password overlay unlocked successfully")
-                            passwordOverlayHost?.hide()
-                        },
-                        onGoToLockScreen = {
-                            Log.d(TAG, "Taking device to lock screen")
-                            passwordOverlayHost?.hide()
-                            lifecycleScope.launch(Dispatchers.Main) {
-                                displayControlService?.lockDevice()
-                            }
-                        },
-                        onCollapsePanels = {
-                            displayControlService?.collapsePanels()
-                        }
-                    )
+                    passwordOverlayHost = createPasswordOverlayHost()
                 }
                 passwordOverlayHost?.show(feature.overlayPassword)
             }
@@ -806,6 +803,7 @@ class ExtinguishService : LifecycleService() {
         screenControlMutex.withLock {
             screenState.update { ScreenState.Off }
             passwordOverlayHost?.hide()
+            displayControlService?.enableStatusBar()
             recordBrightness = try {
                 Settings.System.getInt(
                     contentResolver,
@@ -873,6 +871,7 @@ class ExtinguishService : LifecycleService() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 lifecycleScope.launch(Dispatchers.Main) {
                     passwordOverlayHost?.hide()
+                    displayControlService?.enableStatusBar()
                     screenControlMutex.withLock {
                         displayControlService?.setBrightnessToSetting(recordBrightness)
                     }

@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -68,7 +69,9 @@ class PasswordOverlayHost(
     private val context: Context,
     var onUnlockSuccess: () -> Unit = {},
     var onGoToLockScreen: () -> Unit = {},
-    var onCollapsePanels: () -> Unit = {}
+    var onCollapsePanels: () -> Unit = {},
+    var onShowOverlay: () -> Unit = {},
+    var onHideOverlay: () -> Unit = {}
 ) : LifecycleOwner, SavedStateRegistryOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
@@ -84,6 +87,7 @@ class PasswordOverlayHost(
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
     private var collapseJob: Job? = null
+    private var statusBarBlockerView: View? = null
 
     var isShowing = false
         private set
@@ -116,6 +120,51 @@ class PasswordOverlayHost(
         flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+    }
+
+    private fun addStatusBarBlocker() {
+        if (statusBarBlockerView != null) return
+        try {
+            val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+            val statusBarHeight = if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 100
+            val blockerHeight = (statusBarHeight * 1.8).toInt().coerceAtLeast(160)
+
+            val blockerParams = WindowManager.LayoutParams().apply {
+                type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                format = PixelFormat.TRANSLUCENT
+                gravity = Gravity.TOP or Gravity.START
+                width = WindowManager.LayoutParams.MATCH_PARENT
+                height = blockerHeight
+                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            }
+
+            val blocker = object : View(context) {
+                override fun onTouchEvent(event: MotionEvent): Boolean {
+                    Log.d(TAG, "StatusBarBlocker touched -> collapsing panels")
+                    onCollapsePanels()
+                    return true
+                }
+            }
+            windowManager.addView(blocker, blockerParams)
+            statusBarBlockerView = blocker
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add status bar blocker", e)
+        }
+    }
+
+    private fun removeStatusBarBlocker() {
+        statusBarBlockerView?.let {
+            try {
+                if (it.isAttachedToWindow) {
+                    windowManager.removeView(it)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove status bar blocker", e)
+            }
+            statusBarBlockerView = null
+        }
     }
 
     private inner class CustomOverlayContainer(context: Context) : android.widget.FrameLayout(context) {
@@ -163,15 +212,15 @@ class PasswordOverlayHost(
                         return true
                     }
 
-                    // Bottom navigation bar / gesture touch (bottom 160px)
-                    if (ev.rawY > (realHeight - 160f)) {
+                    // Bottom navigation bar / gesture touch (bottom 140px)
+                    if (ev.rawY > (realHeight - 140f)) {
                         Log.d(TAG, "Bottom nav touch detected -> taking to lock screen")
                         handleLockScreenTrigger()
                         return true
                     }
 
-                    // Left edge (< 80px) or right edge (> width - 80px) back gesture
-                    isEdgeGesture = (ev.rawX < 80f || ev.rawX > (realWidth - 80f))
+                    // Left edge (< 50px) or right edge (> width - 50px) back gesture
+                    isEdgeGesture = (ev.rawX < 50f || ev.rawX > (realWidth - 50f))
                 }
 
                 MotionEvent.ACTION_MOVE -> {
@@ -182,7 +231,7 @@ class PasswordOverlayHost(
                     }
 
                     // Bottom gesture swipe up (Home / Recent)
-                    if (ev.rawY > (realHeight - 160f)) {
+                    if (ev.rawY > (realHeight - 140f)) {
                         Log.d(TAG, "Bottom nav swipe detected -> taking to lock screen")
                         handleLockScreenTrigger()
                         return true
@@ -191,7 +240,7 @@ class PasswordOverlayHost(
                     // Back gesture swipe inward from left/right edge
                     if (isEdgeGesture) {
                         val deltaX = Math.abs(ev.rawX - touchDownX)
-                        if (deltaX > 25f) {
+                        if (deltaX > 35f) {
                             Log.d(TAG, "Back gesture swipe detected -> taking to lock screen")
                             handleLockScreenTrigger()
                             return true
@@ -202,8 +251,8 @@ class PasswordOverlayHost(
                 MotionEvent.ACTION_UP -> {
                     if (isEdgeGesture) {
                         val deltaX = Math.abs(ev.rawX - touchDownX)
-                        if (deltaX > 20f) {
-                            Log.d(TAG, "Back gesture completed -> taking to lock screen")
+                        if (deltaX > 25f) {
+                            Log.d(TAG, "Back gesture swipe completed -> taking to lock screen")
                             handleLockScreenTrigger()
                             return true
                         }
@@ -268,12 +317,14 @@ class PasswordOverlayHost(
                 customView.isFocusableInTouchMode = true
                 customView.requestFocus()
             }
+            addStatusBarBlocker()
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add overlay window", e)
         }
 
+        onShowOverlay()
         onCollapsePanels()
         startPeriodicCollapse()
     }
@@ -282,6 +333,8 @@ class PasswordOverlayHost(
         if (!isShowing) return
         isShowing = false
         stopPeriodicCollapse()
+        removeStatusBarBlocker()
+        onHideOverlay()
 
         try {
             if (customView.isAttachedToWindow) {
@@ -304,7 +357,7 @@ class PasswordOverlayHost(
         collapseJob = coroutineScope.launch {
             while (isActive && isShowing) {
                 onCollapsePanels()
-                delay(300)
+                delay(100)
             }
         }
     }
@@ -317,7 +370,6 @@ class PasswordOverlayHost(
     private fun handleLockScreenTrigger() {
         if (!isShowing || isTriggeringLock) return
         isTriggeringLock = true
-        isShowing = false
         hide()
         onGoToLockScreen()
     }
@@ -417,6 +469,10 @@ class PasswordOverlayHost(
                             KeypadButton(
                                 text = key,
                                 onClick = {
+                                    if (wrongAttempts >= maxAttempts) {
+                                        handleLockScreenTrigger()
+                                        return@KeypadButton
+                                    }
                                     when (key) {
                                         "C" -> enteredPin = ""
                                         "DEL" -> {
@@ -436,8 +492,11 @@ class PasswordOverlayHost(
                                                     wrongAttempts = newWrongAttempts
                                                     enteredPin = ""
                                                     if (newWrongAttempts >= maxAttempts) {
-                                                        Log.d(TAG, "5 wrong attempts reached -> taking to lock screen")
-                                                        handleLockScreenTrigger()
+                                                        Log.d(TAG, "0 attempts left reached -> taking to lock screen")
+                                                        coroutineScope.launch {
+                                                            delay(250)
+                                                            handleLockScreenTrigger()
+                                                        }
                                                     }
                                                 }
                                             }
